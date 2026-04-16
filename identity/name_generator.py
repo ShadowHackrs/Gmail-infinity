@@ -138,7 +138,6 @@ class CulturalBackground(Enum):
     NIGERIAN = "nigerian"
     SOUTH_AFRICAN = "south_african"
     ETHIOPIAN = "ethiopian"
-    EGYPTIAN = "egyptian"
     KENYAN = "kenyan"
     GHANAIAN = "ghanaian"
     UGANDAN = "ugandan"

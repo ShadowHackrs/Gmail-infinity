@@ -3,13 +3,20 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║                    IDENTITY MODULE - QUANTUM PERSONA FORGE                    ║
 ║                      GMAIL INFINITY FACTORY 2026 v∞                          ║
+║                                                                              ║
+║   This module synthesizes complete human identities with 99.97% realism     ║
+║   score. Each persona is mathematically unique and undetectable from real    ║
+║   humans.                                                                    ║
+║                                                                              ║
+║    Modules:                                                                  ║
+║    ├── persona_generator.py  → Complete quantum-human identity synthesis    ║
+║    ├── name_generator.py     → 195+ culture name generation                ║
+║    ├── photo_generator.py    → AI face synthesis (ThisPersonDoesNotExist)   ║
+║    └── bio_generator.py      → Natural language biography generation        ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
-
-This module synthesizes complete human identities with 99.97% realism score.
-Each persona is mathematically unique and undetectable from real humans.
 """
 
-from .persona_generator import PersonaGenerator, QuantumPersona, Gender, AgeGroup, EducationLevel
+from .persona_generator import PersonaGenerator, HumanPersona, Gender, AgeGroup, EducationLevel
 from .name_generator import NameGenerator, CulturalBackground, NameStyle
 from .photo_generator import PhotoGenerator, PhotoStyle, Ethnicity, AgeRange
 from .bio_generator import BioGenerator, WritingStyle, Tone, BioLength
@@ -19,22 +26,11 @@ __author__ = "ARCHITECT-GMAIL"
 __status__ = "QUANTUM_PRODUCTION"
 
 __all__ = [
-    'PersonaGenerator',
-    'QuantumPersona',
-    'NameGenerator',
-    'PhotoGenerator',
-    'BioGenerator',
-    'Gender',
-    'AgeGroup',
-    'CulturalBackground',
-    'NameStyle',
-    'PhotoStyle',
-    'Ethnicity',
-    'AgeRange',
-    'WritingStyle',
-    'Tone',
-    'BioLength',
-    'EducationLevel'
+    'PersonaGenerator', 'HumanPersona',
+    'NameGenerator', 'CulturalBackground', 'NameStyle',
+    'PhotoGenerator', 'PhotoStyle', 'Ethnicity', 'AgeRange',
+    'BioGenerator', 'WritingStyle', 'Tone', 'BioLength',
+    'Gender', 'AgeGroup', 'EducationLevel',
 ]
 
 # Quantum signature - DO NOT MODIFY

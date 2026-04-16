@@ -15,7 +15,35 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 import re
 
-from persona_generator import HumanPersona, Interest, Personality, EmploymentStatus
+from .persona_generator import HumanPersona, Interest, Personality, EmploymentStatus
+
+from enum import Enum
+
+
+class WritingStyle(Enum):
+    """Writing style for bio generation"""
+    ACADEMIC = "academic"           # Formal, citations-style prose
+    CASUAL = "casual"               # Conversational, slang ok, emoji-friendly
+    PROFESSIONAL = "professional"   # LinkedIn-style, polished
+    CREATIVE = "creative"           # Artistic, metaphorical, narrative
+    MINIMALIST = "minimalist"       # Short, direct, punchy
+
+
+class Tone(Enum):
+    """Emotional tone for bio text"""
+    WARM = "warm"                   # Friendly, approachable, empathetic
+    NEUTRAL = "neutral"             # Balanced, factual, measured
+    FORMAL = "formal"               # Corporate, reserved, authoritative
+    WITTY = "witty"                 # Clever, humorous, self-deprecating
+    INSPIRATIONAL = "inspirational" # Motivational, aspirational, uplifting
+
+
+class BioLength(Enum):
+    """Target length for generated bio"""
+    TWEET = "tweet"                 # ≤280 characters
+    SHORT = "short"                 # 1-2 sentences (50-120 chars)
+    MEDIUM = "medium"               # 1 paragraph (120-300 chars)
+    FULL = "full"                   # Multi-paragraph (300-800 chars)
 
 
 class BioGenerator:
@@ -321,8 +349,34 @@ class BioGenerator:
         
         return achievement
     
-    def generate_gmail_bio(self, persona: HumanPersona, style: str = 'professional') -> str:
-        """Generate Gmail/Google Account bio"""
+    def generate_gmail_bio(
+        self,
+        persona: HumanPersona,
+        style: str = 'professional',
+        writing_style: Optional[WritingStyle] = None,
+        tone: Optional[Tone] = None,
+        length: Optional[BioLength] = None,
+    ) -> str:
+        """
+        Generate Gmail/Google Account bio.
+        
+        Args:
+            persona: The human persona to generate a bio for.
+            style: Legacy style selector ('professional', 'casual', 'creative').
+            writing_style: Optional WritingStyle enum — overrides style param.
+            tone: Optional Tone enum — adjusts word selection.
+            length: Optional BioLength enum — controls output length.
+        """
+        # Map WritingStyle enum to legacy style strings
+        if writing_style is not None:
+            _style_map = {
+                WritingStyle.ACADEMIC: 'professional',
+                WritingStyle.CASUAL: 'casual',
+                WritingStyle.PROFESSIONAL: 'professional',
+                WritingStyle.CREATIVE: 'creative',
+                WritingStyle.MINIMALIST: 'casual',
+            }
+            style = _style_map.get(writing_style, style)
         template = random.choice(self.templates['gmail'][style])
         
         # Prepare variables
@@ -391,6 +445,51 @@ class BioGenerator:
         except KeyError:
             # Fallback template
             bio = f"{persona.name.first_name}. {vars_dict['job_simple']}. {vars_dict['interest_phrase']}"
+        
+        # === TONE MODIFIER ===
+        if tone is not None:
+            if tone == Tone.WARM:
+                bio = bio.replace('.', '! ', 1)  # Add warmth with first exclamation
+                warm_prefixes = ['Hey there! ', 'Hi! ', '']
+                bio = random.choice(warm_prefixes) + bio
+            elif tone == Tone.WITTY:
+                witty_suffixes = [
+                    ' (Yes, I do sleep sometimes)',
+                    ' | Professional overthinker',
+                    ' | Fueled by caffeine',
+                    ' | Still figuring it out',
+                ]
+                bio += random.choice(witty_suffixes)
+            elif tone == Tone.INSPIRATIONAL:
+                inspirational_tags = [
+                    ' | Dream big, work hard',
+                    ' | Making every day count',
+                    ' | Building something meaningful',
+                ]
+                bio += random.choice(inspirational_tags)
+            elif tone == Tone.FORMAL:
+                # Strip emojis for formal tone
+                bio = re.sub(r'[^\w\s.,;:\'\"()\-|@/&]', '', bio).strip()
+        
+        # === LENGTH CONTROL ===
+        if length is not None:
+            max_chars = {
+                BioLength.TWEET: 280,
+                BioLength.SHORT: 120,
+                BioLength.MEDIUM: 300,
+                BioLength.FULL: 800,
+            }.get(length, 300)
+            
+            if len(bio) > max_chars:
+                # Truncate at last word boundary before limit
+                truncated = bio[:max_chars]
+                last_space = truncated.rfind(' ')
+                if last_space > max_chars // 2:
+                    bio = truncated[:last_space]
+                else:
+                    bio = truncated
+                # Clean trailing punctuation
+                bio = bio.rstrip(' .,;:|')
         
         return bio
     
@@ -748,7 +847,7 @@ def main():
             personas_data = json.load(f)
         
         # Convert dict to HumanPersona (simplified - in production use proper deserialization)
-        from persona_generator import HumanPersona
+        from .persona_generator import HumanPersona
         personas = []
         for data in personas_data[:5]:  # Generate bios for first 5
             # This is simplified; real implementation would fully reconstruct
@@ -760,7 +859,7 @@ def main():
         
     except FileNotFoundError:
         print("⚠️  Persona file not found. Generating sample persona...")
-        from persona_generator import PersonaGenerator
+        from .persona_generator import PersonaGenerator
         forge = PersonaGenerator()
         personas = forge.generate_batch(5)
     

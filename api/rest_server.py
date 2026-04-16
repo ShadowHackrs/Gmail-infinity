@@ -1022,6 +1022,223 @@ async def api_root():
     }
 
 # ============================================================================
+# API ENDPOINTS - EMAIL DELIVERABILITY
+# ============================================================================
+
+@app.post("/api/deliverability/analyze-spam",
+          tags=["Email Deliverability"],
+          dependencies=[Depends(verify_token)])
+async def analyze_spam_content(subject: str, body: str):
+    """
+    Analyze email subject + body for spam triggers.
+    Returns score 0-10 with trigger details and rewrite recommendations.
+    """
+    from warming.email_deliverability import SpamFilterTrainer
+    trainer = SpamFilterTrainer()
+    analysis = trainer.analyze_content(subject, body)
+    rewritten = trainer.rewrite_subject(subject)
+    
+    return {
+        "score": analysis.score,
+        "is_safe": analysis.is_safe,
+        "subject_score": analysis.subject_score,
+        "body_score": analysis.body_score,
+        "triggers": analysis.triggers,
+        "recommendations": analysis.recommendations,
+        "rewritten_subject": rewritten,
+        "safe_send_times": trainer.get_safe_sending_times("UTC"),
+    }
+
+@app.get("/api/deliverability/reputation/{email}",
+         tags=["Email Deliverability"],
+         dependencies=[Depends(verify_token)])
+async def get_sender_reputation(email: str):
+    """
+    Get sender reputation score and send limit for an email address.
+    """
+    from warming.email_deliverability import SenderReputationEngine
+    engine = SenderReputationEngine()
+    score = engine.calculate_score(email)
+    limit = engine.get_send_limit(email)
+    recs = engine.get_recommendations(email)
+    
+    return {
+        "email": email,
+        "score": score,
+        "daily_send_limit": limit,
+        "recommendations": recs,
+    }
+
+@app.get("/api/deliverability/domain/{domain}",
+         tags=["Email Deliverability"],
+         dependencies=[Depends(verify_token)])
+async def get_domain_deliverability(domain: str):
+    """
+    Full domain deliverability report: reputation score, DNS health,
+    authentication status, Postmaster stats.
+    """
+    from warming.email_deliverability import (
+        DomainReputationBuilder, GooglePostmasterIntegrator,
+        SPFRecordSimulator, DKIMSignatureSimulator, DMARCComplianceEngine,
+    )
+    
+    rep = DomainReputationBuilder(domain)
+    pm = GooglePostmasterIntegrator()
+    
+    return {
+        "domain": domain,
+        "reputation": rep.get_reputation(),
+        "dns_health": rep.get_dns_health(),
+        "domain_score": rep.calculate_domain_score(),
+        "postmaster": {
+            "domain_reputation": pm.get_domain_reputation(domain),
+            "spam_rate": pm.get_spam_rate(domain),
+            "delivery_errors": pm.get_delivery_errors(domain),
+            "authentication": pm.get_authentication_report(domain),
+        },
+    }
+
+@app.post("/api/deliverability/trust-score",
+          tags=["Email Deliverability"],
+          dependencies=[Depends(verify_token)])
+async def calculate_trust_score(signals: Dict[str, float]):
+    """
+    Calculate weighted trust score from multiple signals.
+    Signals should be normalized 0.0-1.0.
+    """
+    from warming.email_deliverability import TrustScoreOptimizer
+    optimizer = TrustScoreOptimizer()
+    score = optimizer.calculate_trust_score(signals)
+    plan = optimizer.optimize(signals, target_score=85.0)
+    
+    return {
+        "trust_score": score,
+        "target": 85.0,
+        "optimization_plan": plan,
+    }
+
+@app.get("/api/deliverability/ip-warmup/{ip}",
+         tags=["Email Deliverability"],
+         dependencies=[Depends(verify_token)])
+async def get_ip_warmup_status(ip: str, target_daily: int = 500):
+    """
+    Get IP warmup schedule and current health.
+    """
+    from warming.email_deliverability import IPReputationWarmup
+    warmup = IPReputationWarmup(ip)
+    
+    return {
+        "ip": ip,
+        "health": warmup.get_health(),
+        "todays_limit": warmup.get_todays_limit(),
+        "warmup_schedule": warmup.get_warmup_schedule(target_daily),
+    }
+
+@app.post("/api/deliverability/contact-network",
+          tags=["Email Deliverability"],
+          dependencies=[Depends(verify_token)])
+async def generate_contact_network(size: int = 25, thread_count: int = 10):
+    """
+    Generate realistic contact network for email warmup.
+    """
+    from warming.email_deliverability import ContactNetworkBuilder
+    builder = ContactNetworkBuilder()
+    contacts = builder.generate_contact_network(size)
+    threads = builder.generate_email_threads(contacts, thread_count)
+    
+    return {
+        "contacts": contacts,
+        "threads": threads,
+        "total_contacts": len(contacts),
+        "total_threads": len(threads),
+    }
+
+# ============================================================================
+# API ENDPOINTS - WARMUP ORCHESTRATION
+# ============================================================================
+
+@app.post("/api/warmup/run-session",
+          tags=["Warmup"],
+          dependencies=[Depends(verify_token)])
+async def run_warmup_session(
+    services: List[str] = None,
+    duration_min: int = 15,
+):
+    """
+    Run warmup sessions across specified Google services.
+    
+    Available services: play_store, photos, calendar, docs, sheets, slides, chrome_sync
+    If services is None, runs all services.
+    """
+    from warming.google_service_warmups import (
+        AndroidPlayStoreWarmup, GooglePhotosWarmup, CalendarEventGenerator,
+        GoogleDocsWarmup, GoogleSheetsWarmup, GoogleSlidesWarmup, ChromeSyncSimulator,
+    )
+    
+    service_map = {
+        'play_store': AndroidPlayStoreWarmup,
+        'photos': GooglePhotosWarmup,
+        'calendar': CalendarEventGenerator,
+        'docs': GoogleDocsWarmup,
+        'sheets': GoogleSheetsWarmup,
+        'slides': GoogleSlidesWarmup,
+        'chrome_sync': ChromeSyncSimulator,
+    }
+    
+    if not services:
+        services = list(service_map.keys())
+    
+    results = {}
+    for svc_name in services:
+        if svc_name not in service_map:
+            results[svc_name] = {"status": "unknown_service"}
+            continue
+        
+        cls = service_map[svc_name]
+        instance = cls()
+        
+        try:
+            await instance.run_warmup_session(duration_min=duration_min // len(services))
+            results[svc_name] = {
+                "status": "completed",
+                "activities": len(instance.get_activity_log()),
+                "log": instance.get_activity_log()[-3:],  # Last 3 entries
+            }
+        except Exception as e:
+            results[svc_name] = {"status": "error", "error": str(e)}
+    
+    return {
+        "session_id": str(uuid.uuid4()),
+        "services_run": len(services),
+        "duration_min": duration_min,
+        "results": results,
+    }
+
+@app.get("/api/warmup/available-services",
+         tags=["Warmup"],
+         dependencies=[Depends(verify_token)])
+async def get_available_warmup_services():
+    """List all available warmup services and their capabilities."""
+    return {
+        "services": [
+            {"name": "play_store", "description": "Google Play Store browsing and app exploration",
+             "actions": ["browse_apps", "search_app", "read_reviews", "install_free_app"]},
+            {"name": "photos", "description": "Google Photos upload and album management",
+             "actions": ["upload_photos", "create_album", "browse_memories", "share_album"]},
+            {"name": "calendar", "description": "Google Calendar event management",
+             "actions": ["create_event", "create_recurring_event", "browse_calendar"]},
+            {"name": "docs", "description": "Google Docs document creation and editing",
+             "actions": ["create_document", "edit_document", "add_comment", "share_document"]},
+            {"name": "sheets", "description": "Google Sheets spreadsheet operations",
+             "actions": ["create_spreadsheet", "enter_data", "apply_formula", "create_chart"]},
+            {"name": "slides", "description": "Google Slides presentation management",
+             "actions": ["create_presentation", "add_slide", "apply_theme"]},
+            {"name": "chrome_sync", "description": "Chrome browser sync simulation",
+             "actions": ["sync_bookmarks", "sync_history", "sync_passwords", "sync_extensions"]},
+        ],
+    }
+
+# ============================================================================
 # ERROR HANDLERS
 # ============================================================================
 

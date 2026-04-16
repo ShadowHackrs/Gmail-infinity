@@ -50,7 +50,7 @@ fake_il = Faker('he_IL')
 fake_tr = Faker('tr_TR')
 fake_pl = Faker('pl_PL')
 fake_se = Faker('sv_SE')
-fake_no = Faker('nb_NO')
+fake_no = Faker('no_NO')
 fake_dk = Faker('da_DK')
 fake_fi = Faker('fi_FI')
 
@@ -198,9 +198,9 @@ class PoliticalLeaning(Enum):
 @dataclass
 class GeoLocation:
     """Geographic location with cultural context"""
-    country_code: str
-    country: str
-    city: str
+    country_code: str = ""
+    country: str = ""
+    city: str = ""
     state: Optional[str] = None
     state_code: Optional[str] = None
     postal_code: str = ""
@@ -217,8 +217,8 @@ class GeoLocation:
 @dataclass
 class NameComponents:
     """Full name with cultural variations"""
-    first_name: str
-    last_name: str
+    first_name: str = ""
+    last_name: str = ""
     middle_name: Optional[str] = None
     prefix: Optional[str] = None
     suffix: Optional[str] = None
@@ -245,12 +245,12 @@ class NameComponents:
 @dataclass
 class DateComponents:
     """Temporal identity markers"""
-    date_of_birth: str
-    age: int
-    birth_year: int
-    birth_month: int
-    birth_day: int
-    zodiac_sign: str
+    date_of_birth: str = ""
+    age: int = 0
+    birth_year: int = 0
+    birth_month: int = 1
+    birth_day: int = 1
+    zodiac_sign: str = ""
     chinese_zodiac: Optional[str] = None
     generation: str = ""
     
@@ -260,15 +260,15 @@ class DateComponents:
 @dataclass
 class ContactInfo:
     """Contact details with platform preferences"""
-    email: str
-    phone: str
-    phone_country_code: str
-    address: str
+    email: str = ""
+    phone: str = ""
+    phone_country_code: str = ""
+    address: str = ""
+    city: str = ""
+    state: str = ""
+    zip_code: str = ""
+    country: str = ""
     address2: Optional[str] = None
-    city: str
-    state: str
-    zip_code: str
-    country: str
     
     # Alternative contact methods
     secondary_email: Optional[str] = None
@@ -345,7 +345,7 @@ class Employment:
 @dataclass
 class Family:
     """Family relationships"""
-    marital_status: MaritalStatus
+    marital_status: MaritalStatus = MaritalStatus.SINGLE
     spouse_name: Optional[str] = None
     children: int = 0
     children_names: List[str] = field(default_factory=list)
@@ -386,10 +386,10 @@ class Lifestyle:
 @dataclass
 class Personality:
     """Psychological profile"""
-    mbti: str  # Myers-Briggs Type Indicator
-    big_five: Dict[str, float]  # OCEAN scores (0-100)
-    hexaco: Dict[str, float]  # HEXACO scores (0-100)
-    enneagram: str  # Enneagram type
+    mbti: str = ""  # Myers-Briggs Type Indicator
+    big_five: Dict[str, float] = field(default_factory=dict)  # OCEAN scores (0-100)
+    hexaco: Dict[str, float] = field(default_factory=dict)  # HEXACO scores (0-100)
+    enneagram: str = ""  # Enneagram type
     strengths: List[str] = field(default_factory=list)
     weaknesses: List[str] = field(default_factory=list)
     values: List[str] = field(default_factory=list)
@@ -401,13 +401,13 @@ class Personality:
 @dataclass
 class Beliefs:
     """Personal beliefs and worldview"""
-    religion: str
-    religiosity: int  # 0-100
-    political_leaning: str
-    political_engagement: int  # 0-100
-    environmentalism: int  # 0-100
-    social_liberalism: int  # 0-100
-    economic_conservatism: int  # 0-100
+    religion: str = ""
+    religiosity: int = 0  # 0-100
+    political_leaning: str = ""
+    political_engagement: int = 0  # 0-100
+    environmentalism: int = 0  # 0-100
+    social_liberalism: int = 0  # 0-100
+    economic_conservatism: int = 0  # 0-100
     
     def to_dict(self) -> Dict:
         data = asdict(self)
@@ -643,10 +643,16 @@ class PersonaGenerator:
             'JP': ['Sato', 'Suzuki', 'Takahashi', 'Tanaka', 'Watanabe', 'Ito', 'Yamamoto', 'Nakamura', 'Kobayashi', 'Saito'],
         }
     
+    @staticmethod
+    def _normalize_weights(weights):
+        """Normalize probability weights to sum to exactly 1.0 (fixes numpy precision issues)"""
+        w = np.array(weights, dtype=np.float64)
+        return w / w.sum()
+    
     def _select_country(self) -> Tuple[str, Faker]:
         """Select random country based on real-world population weights"""
         countries = list(self.country_weights.keys())
-        weights = list(self.country_weights.values())
+        weights = self._normalize_weights(list(self.country_weights.values()))
         country = np.random.choice(countries, p=weights)
         return country, self.fakers.get(country, fake_en)
     
@@ -709,7 +715,7 @@ class PersonaGenerator:
         else:
             # Age 16-76 with realistic distribution
             age_weights = [0.08] * 10 + [0.12] * 15 + [0.15] * 15 + [0.12] * 15 + [0.08] * 11
-            age = np.random.choice(range(16, 77), p=age_weights[:61])
+            age = np.random.choice(range(16, 77), p=self._normalize_weights(age_weights[:61]))
         
         today = datetime.now()
         birth_year = today.year - age
@@ -965,11 +971,13 @@ class PersonaGenerator:
                 years = 6 if edu_level == EducationLevel.DOCTORATE else 2
                 start_year = hs_graduation_year + 4
                 end_year = start_year + years
+                graduated = random.random() < 0.9
             elif random.random() < 0.7:
                 # Bachelor's
                 edu_level = EducationLevel.BACHELOR
                 start_year = hs_graduation_year
                 end_year = start_year + 4
+                graduated = random.random() < 0.85
             else:
                 # Associate or Some college
                 edu_level = random.choice([EducationLevel.ASSOCIATE, EducationLevel.SOME_COLLEGE])
@@ -1165,10 +1173,10 @@ class PersonaGenerator:
             remote_percentage = 0
             if career_field in ['Technology', 'Marketing', 'Consulting']:
                 remote_weights = [0.3, 0.2, 0.2, 0.3]  # 30% full remote, 20% hybrid 2-3 days, etc.
-                remote_percentage = np.random.choice([100, 60, 40, 0], p=remote_weights)
+                remote_percentage = np.random.choice([100, 60, 40, 0], p=self._normalize_weights(remote_weights))
             elif career_field in ['Finance', 'Legal']:
                 remote_weights = [0.1, 0.2, 0.3, 0.4]
-                remote_percentage = np.random.choice([100, 40, 20, 0], p=remote_weights)
+                remote_percentage = np.random.choice([100, 40, 20, 0], p=self._normalize_weights(remote_weights))
             
             current_employment = Employment(
                 status=status,
@@ -1383,7 +1391,7 @@ class PersonaGenerator:
         # Diet preferences
         diets = ['omnivore', 'vegetarian', 'vegan', 'pescatarian', 'keto', 'paleo']
         diet_weights = [0.65, 0.15, 0.05, 0.05, 0.05, 0.05]
-        lifestyle.diet = np.random.choice(diets, p=diet_weights)
+        lifestyle.diet = np.random.choice(diets, p=self._normalize_weights(diet_weights))
         
         # Smoking (declining among younger generations)
         if age < 30:
@@ -1405,7 +1413,7 @@ class PersonaGenerator:
         else:
             ex_weights = [0.15, 0.25, 0.3, 0.2, 0.1]
         
-        lifestyle.exercise_frequency = np.random.choice(exercise_freq, p=ex_weights)
+        lifestyle.exercise_frequency = np.random.choice(exercise_freq, p=self._normalize_weights(ex_weights))
         
         # Digital life
         social_usage = ['minimal', 'light', 'moderate', 'heavy', 'addicted']
@@ -1416,7 +1424,7 @@ class PersonaGenerator:
         else:
             social_weights = [0.2, 0.3, 0.35, 0.15, 0.0]
         
-        lifestyle.social_media_usage = np.random.choice(social_usage, p=social_weights)
+        lifestyle.social_media_usage = np.random.choice(social_usage, p=self._normalize_weights(social_weights))
         
         # Primary device
         if age < 30:
@@ -1426,19 +1434,19 @@ class PersonaGenerator:
         else:
             device_weights = [0.5, 0.3, 0.2]
         
-        lifestyle.primary_device = np.random.choice(['smartphone', 'laptop', 'tablet'], p=device_weights)
+        lifestyle.primary_device = np.random.choice(['smartphone', 'laptop', 'tablet'], p=self._normalize_weights(device_weights))
         
         # Preferred browser
         browsers = ['chrome', 'safari', 'firefox', 'edge', 'brave']
         browser_weights = [0.65, 0.15, 0.1, 0.07, 0.03]
-        lifestyle.preferred_browser = np.random.choice(browsers, p=browser_weights)
+        lifestyle.preferred_browser = np.random.choice(browsers, p=self._normalize_weights(browser_weights))
         
         return lifestyle
     
     def _generate_personality(self, persona: HumanPersona) -> Personality:
         """Generate psychological profile"""
         # MBTI type (weighted)
-        mbti = np.random.choice(self.mbti_types, p=[w/100 for w in self.mbti_weights])
+        mbti = np.random.choice(self.mbti_types, p=self._normalize_weights([w/100 for w in self.mbti_weights]))
         
         # Big Five scores (0-100) with realistic correlations
         big_five = {}
@@ -1693,7 +1701,8 @@ class PersonaGenerator:
             # Unemployed/student/retired - more spread out
             typical_hours = list(range(8, 23))
         
-        digital.typical_login_hours = sorted(random.sample(typical_hours, random.randint(8, 12)))
+        sample_size = min(random.randint(8, 12), len(typical_hours))
+        digital.typical_login_hours = sorted(random.sample(typical_hours, sample_size))
         
         # Typical days (weekdays)
         if persona.date_info.age < 25:

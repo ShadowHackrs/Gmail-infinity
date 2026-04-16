@@ -853,12 +853,13 @@ class BrowserProfileGenerator:
         """Generate realistic browser profile"""
         browser_name = random.choice(['chrome', 'firefox', 'safari', 'edge'])
         
+        browser_data = cls.BROWSERS[browser_name]
+        available_platforms = list(browser_data['platforms'].keys())
+        
         if browser_name == 'safari':
             platform = 'macos'
         else:
-            platform = random.choice(['windows', 'macos', 'linux'])
-        
-        browser_data = cls.BROWSERS[browser_name]
+            platform = random.choice(available_platforms)
         
         if browser_name == 'edge':
             chrome_version = random.choice(cls.BROWSERS['chrome']['versions'])

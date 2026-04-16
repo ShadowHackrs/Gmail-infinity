@@ -45,9 +45,20 @@ All endpoints are rate-limited and JWT-protected.
 Creation tasks are distributed across worker nodes.
 """
 
-from .rest_server import app, start_api_server, get_task_status, cancel_task
-from .websocket_handler import websocket_endpoint, manager, ConnectionManager
-from .dashboard import create_dashboard, run_dashboard
+try:
+    from .rest_server import app, start_api_server, get_task_status, cancel_task
+except ImportError:
+    app = start_api_server = get_task_status = cancel_task = None
+
+try:
+    from .websocket_handler import websocket_endpoint, manager, ConnectionManager
+except ImportError:
+    websocket_endpoint = manager = ConnectionManager = None
+
+try:
+    from .dashboard import create_dashboard, run_dashboard
+except ImportError:
+    create_dashboard = run_dashboard = None
 
 __version__ = "2026.∞.1"
 __author__ = "ARCHITECT-GMAIL"

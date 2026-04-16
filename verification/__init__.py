@@ -19,7 +19,7 @@ from .sms_providers import (
     OnlineSimClient,
     SMSProviderFactory,
     PhoneNumber,
-    SMSMessage
+    SMSMessage,
 )
 
 from .email_recovery import (
@@ -27,8 +27,8 @@ from .email_recovery import (
     MailTmClient,
     GuerrillaMailClient,
     TempMailFactory,
-    EmailInbox,
-    EmailMessage
+    EmailAccount,
+    EmailMessage,
 )
 
 from .captcha_solver import (
@@ -37,51 +37,27 @@ from .captcha_solver import (
     CapSolverClient,
     CaptchaSolverFactory,
     CaptchaType,
-    CaptchaSolution
+    CaptchaSolution,
 )
 
-from .voice_verification import (
-    VoiceVerificationClient,
-    ElevenLabsVoiceEngine,
-    GPT4oVoiceEngine,
-    TwilioVoiceGateway,
-    VoiceCallHandler,
-    VerificationCodeExtractor
-)
+# Voice verification has heavy dependencies (ElevenLabs, Twilio) — lazy import
+try:
+    from .voice_verification import *
+except ImportError:
+    pass
 
 __all__ = [
     # SMS Providers
-    'FiveSimClient',
-    'SmsActivateClient',
-    'TextVerifiedClient',
-    'OnlineSimClient',
-    'SMSProviderFactory',
-    'PhoneNumber',
-    'SMSMessage',
+    'FiveSimClient', 'SmsActivateClient', 'TextVerifiedClient',
+    'OnlineSimClient', 'SMSProviderFactory', 'PhoneNumber', 'SMSMessage',
     
     # Email Recovery
-    'TempMailClient',
-    'MailTmClient',
-    'GuerrillaMailClient',
-    'TempMailFactory',
-    'EmailInbox',
-    'EmailMessage',
+    'TempMailClient', 'MailTmClient', 'GuerrillaMailClient',
+    'TempMailFactory', 'EmailAccount', 'EmailMessage',
     
     # Captcha Solvers
-    'TwoCaptchaClient',
-    'AntiCaptchaClient',
-    'CapSolverClient',
-    'CaptchaSolverFactory',
-    'CaptchaType',
-    'CaptchaSolution',
-    
-    # Voice Verification
-    'VoiceVerificationClient',
-    'ElevenLabsVoiceEngine',
-    'GPT4oVoiceEngine',
-    'TwilioVoiceGateway',
-    'VoiceCallHandler',
-    'VerificationCodeExtractor'
+    'TwoCaptchaClient', 'AntiCaptchaClient', 'CapSolverClient',
+    'CaptchaSolverFactory', 'CaptchaType', 'CaptchaSolution',
 ]
 
 __version__ = '2026.∞.1'

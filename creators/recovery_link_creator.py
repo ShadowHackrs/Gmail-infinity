@@ -16,8 +16,12 @@ from typing import Optional, Dict, List, Tuple, Any
 from pathlib import Path
 
 from playwright.async_api import async_playwright
-from ..identity.persona_generator import PersonaGenerator, HumanPersona
-from .web_creator import GmailAccount
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from identity.persona_generator import PersonaGenerator, HumanPersona
+from creators.web_creator import GmailAccount
 
 
 class FamilyLinkCreator:
