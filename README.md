@@ -594,7 +594,7 @@ This project was created strictly for **security research** and **technical test
 <div align="center">
 **© 2026 Shadow Hacker - All Rights Reserved**
 
-[Website](https://www.shadowhackr.com) • [Facebook](https://www.facebook.com/ShadowHackr) • [WhatsApp](https://wa.me/962796668987)
+[Website](https://www.shadowhackr.com) • [Facebook](https://www.facebook.com/ShadowHackr) • 
 **Built with ❤️ and ☕ by Shadow**
 
 *"Stealth is an art. Automation is a science. We combine both."*
