@@ -893,7 +893,8 @@ async def handle_verification(page, is_mobile=False, use_sms_api=False, progress
 
         sms_available = use_sms_api and bool(
             Config.FIVESIM_API_KEY or Config.SMS_ACTIVATE_API_KEY or
-            Config.ONLINESIM_API_KEY or getattr(Config, 'GETSMS_API_KEY', '')
+            Config.ONLINESIM_API_KEY or getattr(Config, 'GETSMS_API_KEY', '') or
+            Config.HEROSMS_API_KEY
         )
 
         success, method = await handle_phone_page(page, is_mobile, sms_available)

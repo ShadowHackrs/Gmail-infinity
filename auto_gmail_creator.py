@@ -314,6 +314,7 @@ def main():
                 has_sms = any([
                     Config.FIVESIM_API_KEY, Config.SMS_ACTIVATE_API_KEY,
                     Config.ONLINESIM_API_KEY, getattr(Config, 'GETSMS_API_KEY', ''),
+                    Config.HEROSMS_API_KEY,
                 ])
                 if not has_sms:
                     print_warning("No SMS API keys configured! Set at least one in .env")

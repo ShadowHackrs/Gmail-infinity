@@ -32,6 +32,7 @@ async def get_phone_from_any_service():
         ("sms_activate", Config.SMS_ACTIVATE_API_KEY,   _get_sms_activate_phone),
         ("onlinesim",    Config.ONLINESIM_API_KEY,      _get_onlinesim_phone),
         ("getsms",       Config.GETSMS_API_KEY,         _get_getsms_phone),
+        ("herosms",      Config.HEROSMS_API_KEY,        _get_herosms_phone),
     ]
 
     for name, api_key, get_fn in services:
@@ -61,6 +62,7 @@ async def get_code_from_service(service_name: str, order_id: str, wait_time: int
         'sms_activate': _poll_sms_activate_code,
         'onlinesim':    _poll_onlinesim_code,
         'getsms':       _poll_getsms_code,
+        'herosms':      _poll_herosms_code,
     }.get(service_name)
 
     if not poll_fn:
@@ -78,6 +80,7 @@ async def cancel_order(service_name: str, order_id: str):
             'sms_activate': _cancel_sms_activate_order,
             'onlinesim':    _cancel_onlinesim_order,
             'getsms':       _cancel_getsms_order,
+            'herosms':      _cancel_herosms_order,
         }.get(service_name)
 
         if cancel_fn:
@@ -95,6 +98,7 @@ async def finish_order(service_name: str, order_id: str):
             'sms_activate': _finish_sms_activate_order,
             'onlinesim':    None,
             'getsms':       _finish_getsms_order,
+            'herosms':      _finish_herosms_order,
         }.get(service_name)
 
         if finish_fn:
@@ -110,6 +114,7 @@ async def check_balance(service_name: str = None):
     services = {
         '5sim': (Config.FIVESIM_API_KEY, _get_5sim_balance),
         'sms_activate': (Config.SMS_ACTIVATE_API_KEY, _get_sms_activate_balance),
+        'herosms': (Config.HEROSMS_API_KEY, _get_herosms_balance),
     }
 
     if service_name:
@@ -458,3 +463,103 @@ async def _finish_getsms_order(order_id: str):
     async with aiohttp.ClientSession() as session:
         async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
             logger.info(f"GetSMS finish response: {resp.status}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HeroSMS implementation (SMS-Activate compatible API)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _herosms_headers():
+    return {"Accept": "application/json"}
+
+
+async def _get_herosms_balance():
+    url = "https://hero-sms.com/stubs/handler_api.php"
+    params = {"api_key": Config.HEROSMS_API_KEY, "action": "getBalance"}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params, headers=_herosms_headers(), timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            text = (await resp.text()).strip()
+            if text.startswith("ACCESS_BALANCE:"):
+                balance = float(text.split(":")[1])
+                logger.info(f"HeroSMS balance: {balance}")
+                return balance
+            else:
+                logger.error(f"HeroSMS balance check failed: {text}")
+    return None
+
+
+async def _get_herosms_phone():
+    balance = await _get_herosms_balance()
+    if balance is not None and balance < 1:
+        logger.error(f"HeroSMS balance too low: {balance}")
+        return None
+
+    url = "https://hero-sms.com/stubs/handler_api.php"
+    params = {
+        "api_key": Config.HEROSMS_API_KEY,
+        "action": "getNumber",
+        "service": "go",  # Google service code
+        "country": Config.HEROSMS_COUNTRY,
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params, headers=_herosms_headers(), timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            text = (await resp.text()).strip()
+
+    if text.startswith("ACCESS_NUMBER"):
+        parts = text.split(":")
+        if len(parts) >= 3:
+            return {"phone": parts[2], "id": parts[1]}
+    elif "NO_NUMBERS" in text:
+        logger.warning("HeroSMS: no numbers available")
+    elif "NO_BALANCE" in text:
+        logger.error("HeroSMS: insufficient balance")
+    else:
+        logger.warning(f"HeroSMS response: {text}")
+    return None
+
+
+async def _poll_herosms_code(order_id: str, wait_time: int):
+    url = "https://hero-sms.com/stubs/handler_api.php"
+    params = {
+        "api_key": Config.HEROSMS_API_KEY,
+        "action": "getStatus",
+        "id": order_id,
+    }
+    deadline = asyncio.get_running_loop().time() + wait_time
+
+    async with aiohttp.ClientSession() as session:
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                async with session.get(url, params=params, headers=_herosms_headers(), timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    text = (await resp.text()).strip()
+                    if text.startswith("STATUS_OK"):
+                        code = text.split(":")[1]
+                        logger.info(f"HeroSMS code received: {code}")
+                        return code
+                    elif text == "STATUS_CANCEL":
+                        logger.warning("HeroSMS: order cancelled")
+                        return None
+            except Exception as e:
+                logger.warning(f"HeroSMS poll error: {e}")
+            await asyncio.sleep(POLL_INTERVAL)
+
+    logger.warning("HeroSMS: timed out waiting for code")
+    return None
+
+
+async def _cancel_herosms_order(order_id: str):
+    url = "https://hero-sms.com/stubs/handler_api.php"
+    params = {"api_key": Config.HEROSMS_API_KEY, "action": "setStatus", "id": order_id, "status": 8}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params, headers=_herosms_headers(), timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            text = (await resp.text()).strip()
+            logger.info(f"HeroSMS cancel response: {text}")
+
+
+async def _finish_herosms_order(order_id: str):
+    url = "https://hero-sms.com/stubs/handler_api.php"
+    params = {"api_key": Config.HEROSMS_API_KEY, "action": "setStatus", "id": order_id, "status": 6}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params, headers=_herosms_headers(), timeout=aiohttp.ClientTimeout(total=10)) as resp:
+            text = (await resp.text()).strip()
+            logger.info(f"HeroSMS finish response: {text}")

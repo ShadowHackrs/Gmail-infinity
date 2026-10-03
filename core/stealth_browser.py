@@ -37,6 +37,14 @@ class PlaywrightStealthManager:
 
     async def initialize(self, proxy=None, is_premium=False):
         logger.info("Initializing Playwright Stealth Browser...")
+        
+        # Set environment variables for proxy before starting Playwright
+        if Config.LOCAL_PROXY:
+            import os
+            os.environ['HTTP_PROXY'] = Config.LOCAL_PROXY
+            os.environ['HTTPS_PROXY'] = Config.LOCAL_PROXY
+            logger.info(f"Proxy environment variables set: {Config.LOCAL_PROXY}")
+        
         self.playwright = await async_playwright().start()
         
         launch_args = [
@@ -58,9 +66,29 @@ class PlaywrightStealthManager:
             '--window-position=0,0',
         ]
         
+        # Add proxy server to Chrome launch args
+        if Config.LOCAL_PROXY:
+            proxy_url = Config.LOCAL_PROXY
+            if not proxy_url.startswith(('socks5://', 'socks5h://', 'http://', 'https://')):
+                proxy_url = f"socks5://{proxy_url}"
+            launch_args.append(f'--proxy-server={proxy_url}')
+            logger.info(f"Proxy added to Chrome launch args: {proxy_url}")
+        
         # Setup proxy formatting if provided
         proxy_settings = None
-        if proxy:
+        use_cdp_proxy = False
+        
+        # Priority 1: Local proxy (for accessing Google in restricted regions)
+        # Use CDP to set proxy - most reliable method
+        if Config.LOCAL_PROXY:
+            proxy_url = Config.LOCAL_PROXY
+            if not proxy_url.startswith(('socks5://', 'socks5h://', 'http://', 'https://')):
+                proxy_url = f"socks5://{proxy_url}"
+            use_cdp_proxy = True
+            logger.info(f"Local proxy configured via CDP: {proxy_url}")
+        
+        # Priority 2: External proxy pool (for IP rotation)
+        elif proxy:
             parts = proxy.split(':')
             if len(parts) == 4:
                 # Format: host:port:user:pass
@@ -69,11 +97,11 @@ class PlaywrightStealthManager:
                     "username": parts[2],
                     "password": parts[3]
                 }
-                logger.info(f"Proxy configured: {parts[0]}:{parts[1]} (authenticated)")
+                logger.info(f"External proxy configured: {parts[0]}:{parts[1]} (authenticated)")
             elif len(parts) == 2:
                 # Format: host:port
                 proxy_settings = {"server": f"http://{parts[0]}:{parts[1]}"}
-                logger.info(f"Proxy configured: {parts[0]}:{parts[1]}")
+                logger.info(f"External proxy configured: {parts[0]}:{parts[1]}")
             else:
                 logger.error(f"Invalid proxy format '{proxy}'. Expected 'host:port' or 'host:port:user:pass'. Proxy disabled.")
                 proxy_settings = None
@@ -83,15 +111,13 @@ class PlaywrightStealthManager:
             self.browser = await self.playwright.chromium.launch(
                 headless=Config.HEADLESS_MODE,
                 args=launch_args,
-                proxy=proxy_settings,
                 channel="chrome"
             )
         except Exception:
             logger.info("Installed Chrome not found, falling back to bundled Chromium...")
             self.browser = await self.playwright.chromium.launch(
                 headless=Config.HEADLESS_MODE,
-                args=launch_args,
-                proxy=proxy_settings,
+                args=launch_args
             )
         
 
@@ -130,8 +156,6 @@ class PlaywrightStealthManager:
             viewport = {"width": 412, "height": 915}
             is_mobile = True
             has_touch = True
-            sec_ch_ua_mobile = "?1"
-            sec_ch_ua_platform = '"Android"'
         else:
             ua = (
                 f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -141,8 +165,6 @@ class PlaywrightStealthManager:
             viewport = {"width": sp["width"], "height": sp["height"]}
             is_mobile = False
             has_touch = False
-            sec_ch_ua_mobile = "?0"
-            sec_ch_ua_platform = '"Windows"'
 
         self.context = await self.browser.new_context(
             viewport=viewport,
@@ -154,30 +176,63 @@ class PlaywrightStealthManager:
             geolocation={"longitude": geo["lon"], "latitude": geo["lat"]},
             permissions=["geolocation"],
             color_scheme="light",
+            # Only set headers Chrome does NOT generate on its own.
+            # Forcing sec-ch-ua*/sec-fetch-*/Accept-Encoding/Upgrade-Insecure-Requests
+            # through CDP collides with the values Chrome attaches internally, and every
+            # subresource request then fails with net::ERR_INVALID_ARGUMENT
+            # (fonts.gstatic.com, gstatic JS/SVG). Chrome derives those headers
+            # automatically from the user agent, so setting them here buys nothing.
             extra_http_headers={
                 "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "sec-ch-ua": f'"Google Chrome";v="{chrome_major}", "Chromium";v="{chrome_major}", "Not_A Brand";v="24"',
-                "sec-ch-ua-mobile": sec_ch_ua_mobile,
-                "sec-ch-ua-platform": sec_ch_ua_platform,
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "none",
-                "sec-fetch-user": "?1",
-                "Upgrade-Insecure-Requests": "1",
             }
         )
 
         self.is_mobile = is_mobile
         self.page = await self.context.new_page()
+        
+        # Set proxy via CDP if using local proxy
+        if use_cdp_proxy and Config.LOCAL_PROXY:
+            try:
+                # Parse proxy URL
+                proxy_url = Config.LOCAL_PROXY
+                if proxy_url.startswith('http://'):
+                    proxy_url = proxy_url[7:]
+                    proxy_scheme = 'http'
+                elif proxy_url.startswith('https://'):
+                    proxy_url = proxy_url[8:]
+                    proxy_scheme = 'https'
+                elif proxy_url.startswith('socks5://'):
+                    proxy_url = proxy_url[9:]
+                    proxy_scheme = 'socks5'
+                elif proxy_url.startswith('socks5h://'):
+                    proxy_url = proxy_url[10:]
+                    proxy_scheme = 'socks5'
+                else:
+                    proxy_scheme = 'socks5'
+                
+                # Use browser-level CDP session
+                cdp = await self.browser.new_browser_cdp_session()
+                await cdp.send('Network.setProxy', {
+                    'proxyServer': f'{proxy_scheme}://{proxy_url}',
+                    'proxyBypassList': '<-loopback>'
+                })
+                logger.info(f"Proxy set via browser CDP: {proxy_scheme}://{proxy_url}")
+            except Exception as cdp_err:
+                logger.warning(f"Failed to set proxy via browser CDP: {cdp_err}")
+                # Fallback: try using environment variable
+                import os
+                os.environ['HTTP_PROXY'] = Config.LOCAL_PROXY
+                os.environ['HTTPS_PROXY'] = Config.LOCAL_PROXY
+                logger.info(f"Proxy set via environment variables: {Config.LOCAL_PROXY}")
 
         # ── Apply playwright-stealth ────────────────────────────────────────
-        if stealth_async:
-            try:
-                await stealth_async(self.page)
-                logger.info("Stealth plugin applied successfully.")
-            except Exception as e:
-                logger.warning(f"Failed to apply stealth plugin: {e}")
+        # Temporarily disabled due to conflict with poltergeist_fp.js
+        # if False and stealth_async:
+        #     try:
+        #         await stealth_async(self.page)
+        #         logger.info("Stealth plugin applied successfully.")
+        #     except Exception as e:
+        #         logger.warning(f"Failed to apply stealth plugin: {e}")
 
         # ── 12-point fingerprint spoofing (Clean & Dynamic) ────
         rtt     = random.choice([25, 50, 100, 150])
@@ -197,9 +252,9 @@ class PlaywrightStealthManager:
 
         await self.page.add_init_script(f"""
         (() => {{
-            // 1. Remove webdriver flag
-            try {{ delete navigator.__proto__.webdriver; }} catch(_) {{}}
-            Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
+            // 1. Remove webdriver flag (handled by poltergeist_fp.js)
+            // try {{ delete navigator.__proto__.webdriver; }} catch(_) {{}}
+            // Object.defineProperty(navigator, 'webdriver', {{get: () => undefined}});
 
             // 2. Battery API
             if(navigator.getBattery){{navigator.getBattery=()=>Promise.resolve({{
@@ -207,20 +262,20 @@ class PlaywrightStealthManager:
                 onchargingchange: null, onchargingtimechange: null, ondischargingtimechange: null, onlevelchange: null
             }});}}
 
-            // 3. Network connection
-            if (navigator.connection) {{
-                Object.defineProperty(navigator, 'connection', {{ get: () =>
-                    ({{'effectiveType':'4g','rtt':{rtt},'downlink':{dnl},'saveData':false,'type':'wifi','onchange':null}})
-                }});
-            }}
+            // 3. Network connection - handled by poltergeist_fp.js
+            // if (navigator.connection) {{
+            //     Object.defineProperty(navigator, 'connection', {{ get: () =>
+            //         ({{'effectiveType':'4g','rtt':{rtt},'downlink':{dnl},'saveData':false,'type':'wifi','onchange':null}})
+            //     }});
+            // }}
 
-            // 4. Languages
-            Object.defineProperty(navigator, 'languages', {{get: () => ['en-US', 'en']}});
-            Object.defineProperty(navigator, 'language', {{get: () => 'en-US'}});
+            // 4. Languages - handled by poltergeist_fp.js
+            // Object.defineProperty(navigator, 'languages', {{get: () => ['en-US', 'en']}});
+            // Object.defineProperty(navigator, 'language', {{get: () => 'en-US'}});
 
-            // 5. Hardware concurrency & device memory
-            Object.defineProperty(navigator, 'hardwareConcurrency', {{get: () => {hw}}});
-            Object.defineProperty(navigator, 'deviceMemory', {{get: () => {mem}}});
+            // 5. Hardware concurrency & device memory - handled by poltergeist_fp.js
+            // Object.defineProperty(navigator, 'hardwareConcurrency', {{get: () => {hw}}});
+            // Object.defineProperty(navigator, 'deviceMemory', {{get: () => {mem}}});
 
             // 6. WebGL vendor/renderer spoof
             const origGetParameter = WebGLRenderingContext.prototype.getParameter;
@@ -236,19 +291,8 @@ class PlaywrightStealthManager:
                 return origGetParameter2.call(this, param);
             }};
 
-            // 7. Plugins (Chrome always has at least these)
-            Object.defineProperty(navigator, 'plugins', {{get: () => {{
-                const p = [
-                    {{name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format'}},
-                    {{name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: ''}},
-                    {{name: 'Native Client', filename: 'internal-nacl-plugin', description: ''}}
-                ];
-                p.length = 3;
-                p.namedItem = (n) => p.find(x => x.name === n) || null;
-                p.item = (i) => p[i] || null;
-                p.refresh = () => {{}};
-                return p;
-            }}}});
+            // 7. Plugins - handled by poltergeist_fp.js
+            // Removed to avoid conflict with poltergeist_fp.js which defines navigator.plugins
 
             // 8. Permissions API spoof (avoid "prompt" for notifications — real browsers have "denied" or "granted")
             const origQuery = Permissions.prototype.query;

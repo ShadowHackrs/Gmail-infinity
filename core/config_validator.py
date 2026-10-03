@@ -76,6 +76,7 @@ def validate_config():
         ("SMS_ACTIVATE_API_KEY", Config.SMS_ACTIVATE_API_KEY),
         ("ONLINESIM_API_KEY", Config.ONLINESIM_API_KEY),
         ("GETSMS_API_KEY", Config.GETSMS_API_KEY),
+        ("HEROSMS_API_KEY", Config.HEROSMS_API_KEY),
     ]
     active_sms = [name for name, val in sms_keys if val and "YOUR_" not in val]
     if not active_sms:

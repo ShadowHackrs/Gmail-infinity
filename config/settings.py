@@ -38,6 +38,10 @@ class Config:
     GETSMS_API_KEY = os.getenv("GETSMS_API_KEY", "")
     GETSMS_COUNTRY = os.getenv("GETSMS_COUNTRY", "us")
 
+    # HeroSMS
+    HEROSMS_API_KEY = os.getenv("HEROSMS_API_KEY", "")
+    HEROSMS_COUNTRY = os.getenv("HEROSMS_COUNTRY", "0")  # 0 = any country
+
     # ═══════════════════════════════════════════════════════════════
     #                  CAPTCHA SERVICES
     # ═══════════════════════════════════════════════════════════════
@@ -68,6 +72,10 @@ class Config:
     PROXY_TYPE = os.getenv("PROXY_TYPE", "residential")  # residential / mobile / datacenter
     ROTATE_PROXY_EVERY = int(os.getenv("ROTATE_PROXY_EVERY", "1"))
     PROXY_COUNTRY_ROTATION = os.getenv("PROXY_COUNTRY_ROTATION", "US,GB,CA,AU").split(",")
+
+    # Local Proxy (for accessing Google in restricted regions)
+    # Format: socks5://127.0.0.1:10808 or http://127.0.0.1:7890
+    LOCAL_PROXY = os.getenv("LOCAL_PROXY", "")
 
     # Mobile Proxy
     MOBILE_PROXY_IP_CHANGE_URL = os.getenv("MOBILE_PROXY_IP_CHANGE_URL", "")

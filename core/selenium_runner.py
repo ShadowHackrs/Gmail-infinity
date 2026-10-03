@@ -119,6 +119,19 @@ def _parse_proxy(proxy_string):
 
 def create_driver(proxy=None):
     """Create and configure Chrome driver with unique fingerprint per session."""
+    # Selenium reaches ChromeDriver over loopback (127.0.0.1). When HTTP_PROXY /
+    # HTTPS_PROXY are set, urllib3 sends even that localhost traffic to the proxy,
+    # which cannot reach the local driver and answers 502 -> driver creation dies with
+    # "Message: Bad Gateway" no matter what proxy Chrome itself uses. Keep loopback
+    # direct; this does not affect Chrome's own --proxy-server or outbound API calls.
+    _loopback = "localhost,127.0.0.1,::1"
+    for _var in ("NO_PROXY", "no_proxy"):
+        _parts = [p.strip() for p in os.environ.get(_var, "").split(",") if p.strip()]
+        for _host in _loopback.split(","):
+            if _host not in _parts:
+                _parts.append(_host)
+        os.environ[_var] = ",".join(_parts)
+
     try:
         chrome_options = ChromeOptions()
 
@@ -156,7 +169,15 @@ def create_driver(proxy=None):
             chrome_options.add_argument('--headless=new')
             chrome_options.add_argument('--window-size=1920,1080')
 
-        if proxy:
+        # Priority 1: Local proxy (for accessing Google in restricted regions)
+        if Config.LOCAL_PROXY:
+            proxy_url = Config.LOCAL_PROXY
+            if not proxy_url.startswith(('socks5://', 'socks5h://', 'http://', 'https://')):
+                proxy_url = f"socks5://{proxy_url}"
+            chrome_options.add_argument(f'--proxy-server={proxy_url}')
+            logger.info(f"Using local proxy: {proxy_url}")
+        # Priority 2: External proxy pool (for IP rotation)
+        elif proxy:
             parsed = _parse_proxy(proxy)
             if parsed and not parsed["user"]:
                 chrome_options.add_argument(f'--proxy-server={parsed["host"]}:{parsed["port"]}')
